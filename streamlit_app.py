@@ -77,11 +77,12 @@ mp_drawing = mp.solutions.drawing_utils
 
 @st.cache_data(ttl=3600)
 def get_twilio_ice_servers():
-    """ ดึงตั๋วจาก Twilio แบบ Hardcode ไม่ต้องง้อ Secrets """
-    account_sid = "AC371421e02d4624c72384fe86f1f33e41"
-    auth_token = "aacc698c80a42586a86b931c569a3174"
+    """ ดึงตั๋วจาก Twilio ผ่าน Secrets ป้องกันการโดนแบนจาก GitHub """
     try:
-        # ขยายเวลาให้มันคิดนานขึ้น 15 วิ ป้องกัน Streamlit Cloud ช้า
+        # ระบบจะวิ่งไปอ่านจากหน้า Settings > Secrets ของ Streamlit
+        account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
+        auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
+        
         response = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Tokens.json",
             auth=HTTPBasicAuth(account_sid, auth_token),
@@ -90,14 +91,13 @@ def get_twilio_ice_servers():
         response.raise_for_status()
         return response.json()["ice_servers"]
     except requests.exceptions.RequestException as e:
-        # ถ้าพัง จะเอา Error ของจริงมาโชว์บนหน้าจอเลย
         err_msg = str(e)
         if hasattr(e, 'response') and e.response is not None:
             err_msg += f" | Response: {e.response.text}"
         st.error(f"🚨 Twilio API Error: {err_msg}")
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
     except Exception as e:
-        st.error(f"🚨 System Error: {str(e)}")
+        st.error(f"🚨 System Error (เช็ก Secrets ในเว็บด่วน): {str(e)}")
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 class TaiChiVideoProcessor(VideoProcessorBase):
@@ -261,14 +261,13 @@ with col_vid:
 
     st.markdown('<div class="video-container">', unsafe_allow_html=True)
     
-    # วางระบบให้ทำงานลื่นไหล ไม่มีสะดุด
     ctx = webrtc_streamer(
         key="taichi-cyber",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
         rtc_configuration={"iceServers": get_twilio_ice_servers()},
         media_stream_constraints={"video": True, "audio": False},
-        async_processing=True 
+        async_processing=True
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
