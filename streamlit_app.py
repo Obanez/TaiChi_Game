@@ -11,7 +11,7 @@ from datetime import datetime
 import requests
 from requests.auth import HTTPBasicAuth
 
-# --- 1. Firebase Configuration (Region: asia-southeast1) ---
+# --- 1. Firebase Configuration ---
 def init_firebase():
     if not firebase_admin._apps:
         try:
@@ -39,7 +39,6 @@ init_firebase()
 
 # --- 2. Database Helpers ---
 def fetch_guide_line(pose_name):
-    """ ดึงพิกัดไกด์ไลน์จาก Firebase """
     ref = db.reference(f'guidelines/{pose_name}')
     data = ref.get()
     if not data:
@@ -57,7 +56,6 @@ def fetch_guide_line(pose_name):
     return np.array(left_hand, dtype=np.int32), np.array(right_hand, dtype=np.int32)
 
 def save_score_to_firebase(username, score):
-    """ บันทึกคะแนนลง Firebase """
     ref = db.reference('scores')
     ref.push({
         'username': username,
@@ -66,40 +64,45 @@ def save_score_to_firebase(username, score):
     })
 
 def get_leaderboard():
-    """ ดึง Top 10 Leaderboard """
     ref = db.reference('scores')
     data = ref.get()
     if not data: return []
-    
     scores_list = [val for val in data.values()]
     scores_list.sort(key=lambda x: x['score'], reverse=True)
     return scores_list[:10]
 
 # --- 3. MediaPipe & Video Processor ---
-import mediapipe as mp
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-# ถอด @st.cache_data ออก เพื่อบังคับให้ดึงตั๋ว Twilio ใหม่เสมอ ไม่ให้มันจำ Error เก่า
+# ฟังก์ชันดึงสัญญาณ (ดึงออกมาไว้ข้างนอก, ฝังกุญแจตรงๆ, และบังคับใช้ TCP)
 def get_ice_servers():
     try:
-        # เขียนเผื่อไว้ทั้ง 2 แบบ ไม่ว่าในเว็บจะจัด Secrets ไว้แบบไหนก็ดึงได้ชัวร์
-        if "twilio" in st.secrets:
-            account_sid = st.secrets["twilio"].get("account_sid", "") or st.secrets["twilio"].get("TWILIO_ACCOUNT_SID", "")
-            auth_token = st.secrets["twilio"].get("auth_token", "") or st.secrets["twilio"].get("TWILIO_AUTH_TOKEN", "")
-        else:
-            account_sid = st.secrets.get("TWILIO_ACCOUNT_SID", "")
-            auth_token = st.secrets.get("TWILIO_AUTH_TOKEN", "")
-
+        # ฝังกุญแจลงโค้ดไปเลย ตัดปัญหาหา Secrets ไม่เจอ
+        account_sid = "AC371421e02d4624c72384fe86f1f33e41"
+        auth_token = "aacc698c80a42586a86b931c569a3174"
+        
         response = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Tokens.json",
             auth=HTTPBasicAuth(account_sid, auth_token)
         )
         response.raise_for_status()
-        return response.json()["ice_servers"]
+        data = response.json()
+        
+        # บังคับสร้างท่อ TCP พอร์ต 443 ทะลวงกำแพงเน็ต
+        return [{
+            "urls": ["turn:global.turn.twilio.com:443?transport=tcp"],
+            "username": data["username"],
+            "credential": data["password"]
+        }]
     except Exception as e:
-        print(f"Twilio API Error: {e}") # ซ่อน Error ไม่ให้รกหน้าเว็บ แต่ดูได้ใน Log
-        return [{"urls": ["stun:stun.l.google.com:19302"]}]
+        print(f"Twilio API Error: {e}")
+        # ท่อสำรอง (Metered) แบบบังคับ TCP
+        return [{
+            "urls": ["turn:openrelay.metered.ca:443?transport=tcp"],
+            "username": "openrelayproject",
+            "credential": "openrelayproject"
+        }]
 
 class TaiChiVideoProcessor(VideoProcessorBase):
     def __init__(self, guide_line_left, guide_line_right):
@@ -262,12 +265,15 @@ with col_vid:
 
     st.markdown('<div class="video-container">', unsafe_allow_html=True)
     
-    # ปิด async_processing ทิ้ง เพื่อแก้บั๊ก Thread ค้าง (is_alive)
+    # ดึงค่า iceServers มาก่อน (บังคับให้เชื่อมต่อสำเร็จแน่นอน)
+    ice_servers_config = get_ice_servers()
+    
+    # ไม่มีคำสั่ง async_processing ตัดปัญหา Error NoneType กับ is_alive
     ctx = webrtc_streamer(
         key="taichi-cyber",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
-        rtc_configuration={"iceServers": get_ice_servers()},
+        rtc_configuration={"iceServers": ice_servers_config},
         media_stream_constraints={"video": True, "audio": False}
     )
     st.markdown('</div>', unsafe_allow_html=True)
