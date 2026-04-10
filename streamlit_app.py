@@ -75,10 +75,10 @@ def get_leaderboard():
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-# ฟังก์ชันดึงสัญญาณ (ดึงออกมาไว้ข้างนอก, ฝังกุญแจตรงๆ, และบังคับใช้ TCP)
+@st.cache_data
 def get_ice_servers():
     try:
-        # ฝังกุญแจลงโค้ดไปเลย ตัดปัญหาหา Secrets ไม่เจอ
+        # ฝังกุญแจ Twilio ไปเลย ตัดปัญหาหา Secrets ไม่เจอ
         account_sid = "AC371421e02d4624c72384fe86f1f33e41"
         auth_token = "aacc698c80a42586a86b931c569a3174"
         
@@ -87,22 +87,10 @@ def get_ice_servers():
             auth=HTTPBasicAuth(account_sid, auth_token)
         )
         response.raise_for_status()
-        data = response.json()
-        
-        # บังคับสร้างท่อ TCP พอร์ต 443 ทะลวงกำแพงเน็ต
-        return [{
-            "urls": ["turn:global.turn.twilio.com:443?transport=tcp"],
-            "username": data["username"],
-            "credential": data["password"]
-        }]
+        return response.json()["ice_servers"]
     except Exception as e:
         print(f"Twilio API Error: {e}")
-        # ท่อสำรอง (Metered) แบบบังคับ TCP
-        return [{
-            "urls": ["turn:openrelay.metered.ca:443?transport=tcp"],
-            "username": "openrelayproject",
-            "credential": "openrelayproject"
-        }]
+        return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 class TaiChiVideoProcessor(VideoProcessorBase):
     def __init__(self, guide_line_left, guide_line_right):
@@ -265,10 +253,8 @@ with col_vid:
 
     st.markdown('<div class="video-container">', unsafe_allow_html=True)
     
-    # ดึงค่า iceServers มาก่อน (บังคับให้เชื่อมต่อสำเร็จแน่นอน)
     ice_servers_config = get_ice_servers()
     
-    # ไม่มีคำสั่ง async_processing ตัดปัญหา Error NoneType กับ is_alive
     ctx = webrtc_streamer(
         key="taichi-cyber",
         mode=WebRtcMode.SENDRECV,
