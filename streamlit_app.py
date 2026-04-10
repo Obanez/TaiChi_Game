@@ -360,14 +360,12 @@ with col_vid:
             rtc_configuration={
                 "iceServers": [
                     {"urls": ["stun:stun.l.google.com:19302"]},
-                    # ใช้ TURN Server ฟรีของ Open Relay Project (ทะลุเน็ตบล็อกแน่นอน)
                     {
-                        "urls": ["turn:openrelay.metered.ca:80"],
-                        "username": "openrelayproject",
-                        "credential": "openrelayproject",
-                    },
-                    {
-                        "urls": ["turn:openrelay.metered.ca:443"],
+                        "urls": [
+                            "turn:openrelay.metered.ca:80",
+                            "turn:openrelay.metered.ca:443",
+                            "turn:openrelay.metered.ca:443?transport=tcp" # บรรทัดนี้แหละครับ พระเอกขี่ม้าขาว!
+                        ],
                         "username": "openrelayproject",
                         "credential": "openrelayproject",
                     }
