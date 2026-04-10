@@ -20,7 +20,7 @@ def init_firebase():
                 "type": fb_conf["type"],
                 "project_id": fb_conf["project_id"],
                 "private_key_id": fb_conf["private_key_id"],
-                "private_key": fb_conf["private_key"], # ใช้ค่าจาก Triple Quotes ใน TOML ได้เลย
+                "private_key": fb_conf["private_key"], 
                 "client_email": fb_conf["client_email"],
                 "client_id": fb_conf["client_id"],
                 "auth_uri": fb_conf["auth_uri"],
@@ -80,13 +80,17 @@ import mediapipe as mp
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-@st.cache_data
+# ถอด @st.cache_data ออก เพื่อบังคับให้ดึงตั๋ว Twilio ใหม่เสมอ ไม่ให้มันจำ Error เก่า
 def get_ice_servers():
     try:
-        # เปลี่ยนการดึงค่าให้ตรงกับที่ตั้งไว้ใน Secrets
-        account_sid = st.secrets["twilio"]["account_sid"]
-        auth_token = st.secrets["twilio"]["auth_token"]
-        
+        # เขียนเผื่อไว้ทั้ง 2 แบบ ไม่ว่าในเว็บจะจัด Secrets ไว้แบบไหนก็ดึงได้ชัวร์
+        if "twilio" in st.secrets:
+            account_sid = st.secrets["twilio"].get("account_sid", "") or st.secrets["twilio"].get("TWILIO_ACCOUNT_SID", "")
+            auth_token = st.secrets["twilio"].get("auth_token", "") or st.secrets["twilio"].get("TWILIO_AUTH_TOKEN", "")
+        else:
+            account_sid = st.secrets.get("TWILIO_ACCOUNT_SID", "")
+            auth_token = st.secrets.get("TWILIO_AUTH_TOKEN", "")
+
         response = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Tokens.json",
             auth=HTTPBasicAuth(account_sid, auth_token)
@@ -94,7 +98,7 @@ def get_ice_servers():
         response.raise_for_status()
         return response.json()["ice_servers"]
     except Exception as e:
-        st.warning(f"⚠️ Twilio API Error: {e}")
+        print(f"Twilio API Error: {e}") # ซ่อน Error ไม่ให้รกหน้าเว็บ แต่ดูได้ใน Log
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 class TaiChiVideoProcessor(VideoProcessorBase):
@@ -113,7 +117,7 @@ class TaiChiVideoProcessor(VideoProcessorBase):
         self.total_frames = 0
         self.frame_index = 0
         self.game_finished = False
-        self.max_frames = 3200 # ความยาวเกมมาตรฐาน
+        self.max_frames = 3200 
 
     def is_inside_circle(self, hand_pos, guide_pos, radius):
         return np.linalg.norm(np.array(hand_pos) - np.array(guide_pos)) < radius
@@ -159,7 +163,6 @@ class TaiChiVideoProcessor(VideoProcessorBase):
 
                     self.frame_index += 1
 
-                # คำนวณ Accuracy
                 if self.total_frames > 0:
                     self.accuracy["Left"] = (self.frames_in_circle_left / self.total_frames) * 100
                     self.accuracy["Right"] = (self.frames_in_circle_right / self.total_frames) * 100
@@ -172,143 +175,30 @@ class TaiChiVideoProcessor(VideoProcessorBase):
 # --- 4. Streamlit UI Styling ---
 st.set_page_config(page_title="TAI CHI CYBERPUNK", layout="wide")
 
-# Custom CSS for Cyberpunk Theme
 st.markdown("""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
-    /* Global Background and Typography */
-    .stApp {
-        background-color: #1a1a2e;
-        color: #ffffff;
-        font-family: 'Orbitron', sans-serif;
-    }
-    
-    h1, h2, h3, .stHeader, .stMetric label, button {
-        font-family: 'Orbitron', sans-serif !important;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-    }
-
-    h1 {
-        color: #00bcd4;
-        text-shadow: 0 0 10px #00bcd4, 0 0 20px #00bcd4;
-        text-align: center;
-        padding-bottom: 30px;
-    }
-
-    /* Sidebar Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #16213e !important;
-        border-right: 2px solid #00bcd4;
-    }
-    
-    section[data-testid="stSidebar"] .stMarkdown h2 {
-        color: #00bcd4;
-        font-size: 1.2rem;
-        border-bottom: 1px solid #00bcd4;
-        padding-bottom: 10px;
-    }
-
-    /* Video Frame */
-    .video-container {
-        border: 4px solid #00bcd4;
-        border-radius: 15px;
-        box-shadow: 0 0 20px #00bcd4, inset 0 0 10px #00bcd4;
-        overflow: hidden;
-        margin: auto;
-    }
-
-    /* Metric Cards (Glassmorphism) */
-    .metric-card {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(0, 188, 212, 0.3);
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        margin-bottom: 20px;
-        transition: 0.3s;
-    }
-    
-    .metric-card:hover {
-        border-color: #00bcd4;
-        box-shadow: 0 0 15px rgba(0, 188, 212, 0.5);
-        transform: translateY(-5px);
-    }
-
-    .metric-value {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #00bcd4;
-        text-shadow: 0 0 5px #00bcd4;
-    }
-
-    .metric-label {
-        font-size: 0.8rem;
-        color: #aaa;
-        margin-bottom: 5px;
-    }
-
-    /* Leaderboard Table */
-    .leaderboard-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 20px;
-        background: rgba(0, 0, 0, 0.2);
-    }
-    
-    .leaderboard-table th {
-        background-color: rgba(0, 188, 212, 0.2);
-        color: #00bcd4;
-        padding: 12px;
-        text-align: left;
-        border-bottom: 2px solid #00bcd4;
-    }
-    
-    .leaderboard-table td {
-        padding: 10px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .leaderboard-table tr:nth-child(even) {
-        background-color: rgba(255, 255, 255, 0.02);
-    }
-    
-    .leaderboard-table tr:hover {
-        background-color: rgba(0, 188, 212, 0.1);
-        cursor: default;
-    }
-
-    /* Buttons */
-    .stButton>button {
-        background: transparent !important;
-        color: #00bcd4 !important;
-        border: 2px solid #00bcd4 !important;
-        border-radius: 5px !important;
-        padding: 10px 24px !important;
-        transition: all 0.3s ease !important;
-        width: 100%;
-    }
-    
-    .stButton>button:hover {
-        background: #00bcd4 !important;
-        color: #1a1a2e !important;
-        box-shadow: 0 0 15px #00bcd4 !important;
-        transform: translateY(-3px) !important;
-    }
-
-    /* Footer */
-    .footer {
-        text-align: center;
-        color: #ff8c00;
-        font-size: 0.7rem;
-        margin-top: 50px;
-        text-shadow: 0 0 5px #ff8c00;
-    }
+    .stApp { background-color: #1a1a2e; color: #ffffff; font-family: 'Orbitron', sans-serif; }
+    h1, h2, h3, .stHeader, .stMetric label, button { font-family: 'Orbitron', sans-serif !important; text-transform: uppercase; letter-spacing: 2px; }
+    h1 { color: #00bcd4; text-shadow: 0 0 10px #00bcd4, 0 0 20px #00bcd4; text-align: center; padding-bottom: 30px; }
+    section[data-testid="stSidebar"] { background-color: #16213e !important; border-right: 2px solid #00bcd4; }
+    section[data-testid="stSidebar"] .stMarkdown h2 { color: #00bcd4; font-size: 1.2rem; border-bottom: 1px solid #00bcd4; padding-bottom: 10px; }
+    .video-container { border: 4px solid #00bcd4; border-radius: 15px; box-shadow: 0 0 20px #00bcd4, inset 0 0 10px #00bcd4; overflow: hidden; margin: auto; }
+    .metric-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(0, 188, 212, 0.3); border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); margin-bottom: 20px; transition: 0.3s; }
+    .metric-card:hover { border-color: #00bcd4; box-shadow: 0 0 15px rgba(0, 188, 212, 0.5); transform: translateY(-5px); }
+    .metric-value { font-size: 2rem; font-weight: bold; color: #00bcd4; text-shadow: 0 0 5px #00bcd4; }
+    .metric-label { font-size: 0.8rem; color: #aaa; margin-bottom: 5px; }
+    .leaderboard-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: rgba(0, 0, 0, 0.2); }
+    .leaderboard-table th { background-color: rgba(0, 188, 212, 0.2); color: #00bcd4; padding: 12px; text-align: left; border-bottom: 2px solid #00bcd4; }
+    .leaderboard-table td { padding: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+    .leaderboard-table tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.02); }
+    .leaderboard-table tr:hover { background-color: rgba(0, 188, 212, 0.1); cursor: default; }
+    .stButton>button { background: transparent !important; color: #00bcd4 !important; border: 2px solid #00bcd4 !important; border-radius: 5px !important; padding: 10px 24px !important; transition: all 0.3s ease !important; width: 100%; }
+    .stButton>button:hover { background: #00bcd4 !important; color: #1a1a2e !important; box-shadow: 0 0 15px #00bcd4 !important; transform: translateY(-3px) !important; }
+    .footer { text-align: center; color: #ff8c00; font-size: 0.7rem; margin-top: 50px; text-shadow: 0 0 5px #ff8c00; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -353,7 +243,6 @@ with st.sidebar:
 col_vid, col_stats = st.columns([3, 1])
 
 with col_stats:
-    # Placeholders for Streamlit updates with initial styled containers
     l_acc_p = st.empty()
     r_acc_p = st.empty()
     t_acc_p = st.empty()
@@ -372,17 +261,16 @@ with col_vid:
         st.warning("⚠️ SYNC DATA MISSING. CHECK FIREBASE UPLOAD.")
 
     st.markdown('<div class="video-container">', unsafe_allow_html=True)
+    
+    # ปิด async_processing ทิ้ง เพื่อแก้บั๊ก Thread ค้าง (is_alive)
     ctx = webrtc_streamer(
-            key="taichi-cyber",
-            mode=WebRtcMode.SENDRECV,
-            video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
-            rtc_configuration={"iceServers": get_ice_servers()},
-            media_stream_constraints={"video": True, "audio": False},
-            async_processing=True
-        )
+        key="taichi-cyber",
+        mode=WebRtcMode.SENDRECV,
+        video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
+        rtc_configuration={"iceServers": get_ice_servers()},
+        media_stream_constraints={"video": True, "audio": False}
+    )
     st.markdown('</div>', unsafe_allow_html=True)
-
-
 
 # --- UI Update Logic ---
 if ctx.video_processor:
@@ -393,7 +281,6 @@ if ctx.video_processor:
             finished = ctx.video_processor.game_finished
             total_score = (left_acc + right_acc) / 2
             
-        # Update metrics using markdown to keep styling consistent
         l_acc_p.markdown(f"""<div class="metric-card"><div class="metric-label">L-HAND SYNC</div><div class="metric-value">{left_acc:.2f}%</div></div>""", unsafe_allow_html=True)
         r_acc_p.markdown(f"""<div class="metric-card"><div class="metric-label">R-HAND SYNC</div><div class="metric-value">{right_acc:.2f}%</div></div>""", unsafe_allow_html=True)
         t_acc_p.markdown(f"""<div class="metric-card" style="border-color:#00bcd4; box-shadow: 0 0 15px #00bcd4;"><div class="metric-label">TOTAL ACCURACY</div><div class="metric-value">{total_score:.2f}%</div></div>""", unsafe_allow_html=True)
