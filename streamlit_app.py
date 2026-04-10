@@ -79,13 +79,13 @@ def get_leaderboard():
 import mediapipe as mp
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
+
+# ย้ายออกมาไว้ข้างนอกคลาส และชิดซ้ายสุดแบบนี้ครับ!
 @st.cache_data
 def get_ice_servers():
     try:
         account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
         auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
-        
-        # ยิงคำขอไปขอช่องทางพิเศษจาก Twilio
         response = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Tokens.json",
             auth=HTTPBasicAuth(account_sid, auth_token)
