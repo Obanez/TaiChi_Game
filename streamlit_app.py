@@ -74,8 +74,9 @@ def get_leaderboard():
     return scores_list[:10]
 
 # --- 3. MediaPipe & Video Processor ---
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+import mediapipe as mp
+from mediapipe.python.solutions import hands as mp_hands
+from mediapipe.python.solutions import drawing_utils as mp_drawing
 
 class TaiChiVideoProcessor(VideoProcessorBase):
     def __init__(self, guide_line_left, guide_line_right):
