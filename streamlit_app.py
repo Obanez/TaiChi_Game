@@ -80,12 +80,13 @@ import mediapipe as mp
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-# ย้ายออกมาไว้ข้างนอกคลาส และชิดซ้ายสุดแบบนี้ครับ!
 @st.cache_data
 def get_ice_servers():
     try:
-        account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
-        auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
+        # เปลี่ยนการดึงค่าให้ตรงกับที่ตั้งไว้ใน Secrets
+        account_sid = st.secrets["twilio"]["account_sid"]
+        auth_token = st.secrets["twilio"]["auth_token"]
+        
         response = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Tokens.json",
             auth=HTTPBasicAuth(account_sid, auth_token)
