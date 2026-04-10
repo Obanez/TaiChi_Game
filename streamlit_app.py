@@ -11,7 +11,7 @@ from datetime import datetime
 import requests
 from requests.auth import HTTPBasicAuth
 
-# --- 1. Firebase Configuration ---
+# --- 1. Firebase Configuration (Region: asia-southeast1) ---
 def init_firebase():
     if not firebase_admin._apps:
         try:
@@ -39,6 +39,7 @@ init_firebase()
 
 # --- 2. Database Helpers ---
 def fetch_guide_line(pose_name):
+    """ ดึงพิกัดไกด์ไลน์จาก Firebase """
     ref = db.reference(f'guidelines/{pose_name}')
     data = ref.get()
     if not data:
@@ -56,6 +57,7 @@ def fetch_guide_line(pose_name):
     return np.array(left_hand, dtype=np.int32), np.array(right_hand, dtype=np.int32)
 
 def save_score_to_firebase(username, score):
+    """ บันทึกคะแนนลง Firebase """
     ref = db.reference('scores')
     ref.push({
         'username': username,
@@ -64,9 +66,11 @@ def save_score_to_firebase(username, score):
     })
 
 def get_leaderboard():
+    """ ดึง Top 10 Leaderboard """
     ref = db.reference('scores')
     data = ref.get()
     if not data: return []
+    
     scores_list = [val for val in data.values()]
     scores_list.sort(key=lambda x: x['score'], reverse=True)
     return scores_list[:10]
@@ -75,21 +79,24 @@ def get_leaderboard():
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-@st.cache_data
 def get_ice_servers():
+    account_sid = "AC371421e02d4624c72384fe86f1f33e41"
+    auth_token = "aacc698c80a42586a86b931c569a3174"
     try:
-        # ฝังกุญแจ Twilio ไปเลย ตัดปัญหาหา Secrets ไม่เจอ
-        account_sid = "AC371421e02d4624c72384fe86f1f33e41"
-        auth_token = "aacc698c80a42586a86b931c569a3174"
-        
         response = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Tokens.json",
-            auth=HTTPBasicAuth(account_sid, auth_token)
+            auth=HTTPBasicAuth(account_sid, auth_token),
+            timeout=5
         )
         response.raise_for_status()
-        return response.json()["ice_servers"]
+        data = response.json()
+        return [{
+            "urls": ["turn:global.turn.twilio.com:443?transport=tcp"],
+            "username": data["username"],
+            "credential": data["password"]
+        }]
     except Exception as e:
-        print(f"Twilio API Error: {e}")
+        print(f"Twilio Warning: {e}")
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 class TaiChiVideoProcessor(VideoProcessorBase):
@@ -249,18 +256,17 @@ with col_vid:
     g_left, g_right = fetch_guide_line(pose_name)
 
     if g_left.size == 0:
-        st.warning("⚠️ SYNC DATA MISSING. CHECK FIREBASE UPLOAD.")
+        st.warning("SYNC DATA MISSING. CHECK FIREBASE UPLOAD.")
 
     st.markdown('<div class="video-container">', unsafe_allow_html=True)
-    
-    ice_servers_config = get_ice_servers()
     
     ctx = webrtc_streamer(
         key="taichi-cyber",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
-        rtc_configuration={"iceServers": ice_servers_config},
-        media_stream_constraints={"video": True, "audio": False}
+        rtc_configuration={"iceServers": get_ice_servers()},
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=False
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
