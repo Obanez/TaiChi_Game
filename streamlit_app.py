@@ -354,12 +354,28 @@ with col_vid:
 
     st.markdown('<div class="video-container">', unsafe_allow_html=True)
     ctx = webrtc_streamer(
-        key="taichi-cyber",
-        mode=WebRtcMode.SENDRECV,
-        video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False},
-    )
+            key="taichi-cyber",
+            mode=WebRtcMode.SENDRECV,
+            video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
+            rtc_configuration={
+                "iceServers": [
+                    {"urls": ["stun:stun.l.google.com:19302"]},
+                    # ใช้ TURN Server ฟรีของ Open Relay Project (ทะลุเน็ตบล็อกแน่นอน)
+                    {
+                        "urls": ["turn:openrelay.metered.ca:80"],
+                        "username": "openrelayproject",
+                        "credential": "openrelayproject",
+                    },
+                    {
+                        "urls": ["turn:openrelay.metered.ca:443"],
+                        "username": "openrelayproject",
+                        "credential": "openrelayproject",
+                    }
+                ]
+            },
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True
+        )
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- UI Update Logic ---
