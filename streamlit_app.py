@@ -8,6 +8,8 @@ from firebase_admin import credentials, db
 import threading
 import time
 from datetime import datetime
+import requests
+from requests.auth import HTTPBasicAuth
 
 # --- 1. Firebase Configuration (Region: asia-southeast1) ---
 def init_firebase():
@@ -77,6 +79,22 @@ def get_leaderboard():
 import mediapipe as mp
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
+@st.cache_data
+def get_ice_servers():
+    try:
+        account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
+        auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
+        
+        # ยิงคำขอไปขอช่องทางพิเศษจาก Twilio
+        response = requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Tokens.json",
+            auth=HTTPBasicAuth(account_sid, auth_token)
+        )
+        response.raise_for_status()
+        return response.json()["ice_servers"]
+    except Exception as e:
+        st.warning(f"⚠️ Twilio API Error: {e}")
+        return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 class TaiChiVideoProcessor(VideoProcessorBase):
     def __init__(self, guide_line_left, guide_line_right):
@@ -357,20 +375,13 @@ with col_vid:
             key="taichi-cyber",
             mode=WebRtcMode.SENDRECV,
             video_processor_factory=lambda: TaiChiVideoProcessor(g_left, g_right),
-            rtc_configuration={
-                "iceServers": [
-                    {"urls": ["stun:stun.l.google.com:19302"]},
-                    {
-                        "urls": ["turn:openrelay.metered.ca:80"],
-                        "username": "openrelayproject",
-                        "credential": "openrelayproject",
-                    },
-                ]
-            },
+            rtc_configuration={"iceServers": get_ice_servers()},
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True
         )
     st.markdown('</div>', unsafe_allow_html=True)
+
+
 
 # --- UI Update Logic ---
 if ctx.video_processor:
